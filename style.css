@@ -35,6 +35,7 @@ header {
   border-bottom: 1px solid var(--border);
 }
 header a { font-weight: 600; }
+#pin { border: 0; background: none; padding: 0 0 0 8px; color: var(--muted); font: inherit; font-size: 14px; }
 #status { color: var(--muted); font-size: 14px; cursor: pointer; }
 #banner {
   display: block;
@@ -62,4 +63,6 @@ pre { padding: 12px; overflow-x: auto; }
 pre code { padding: 0; background: none; }
 details summary { color: var(--muted); cursor: pointer; }
 img { max-width: 100%; }
-input { font: inherit; padding: 6px; width: 60%; }
+#token-form input { font: inherit; padding: 6px; width: 60%; }
+li:has(> input[type=checkbox]) { list-style: none; }
+li > input[type=checkbox] { margin: 0 .3em 0 -1.3em; vertical-align: middle; }

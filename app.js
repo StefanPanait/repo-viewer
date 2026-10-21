@@ -6,9 +6,10 @@ const SYNC_EVERY_MS = 5 * 60 * 1000;
 const doc = document.getElementById('doc');
 const status = document.getElementById('status');
 const banner = document.getElementById('banner');
+const pin = document.getElementById('pin');
 
 // IndexedDB rather than localStorage, so the service worker can read it too.
-// kv: token, lastSync. files: path -> { sha, text }.
+// kv: token, lastSync, startPage, lastPage. files: path -> { sha, text }.
 const dbOpen = new Promise((resolve, reject) => {
   const open = indexedDB.open('trips', 2);
   open.onupgradeneeded = () => {
@@ -137,6 +138,7 @@ async function render(path) {
   addHeadingIds(doc);
   rewriteLinks(doc, path);
   document.title = doc.querySelector('h1')?.textContent ?? path;
+  put('kv', 'lastPage', path);
   if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
   return true;
 }
@@ -167,10 +169,23 @@ async function backgroundSync(token) {
   }
 }
 
+async function showPin(path) {
+  const isStart = await get('kv', 'startPage') === path;
+  pin.textContent = isStart ? '★ Start page' : '☆ Set as start page';
+  pin.hidden = false;
+  pin.onclick = async () => {
+    await (isStart ? del('kv', 'startPage') : put('kv', 'startPage', path));
+    showPin(path);
+  };
+}
+
 async function main() {
-  const path = new URLSearchParams(location.search).get('p') || HOME;
   const token = await readToken();
   if (!token) return askForToken();
+  // The home-screen icon launches with no ?p: open the chosen start page, else the last page read.
+  const path = new URLSearchParams(location.search).get('p')
+    || await get('kv', 'startPage') || await get('kv', 'lastPage') || HOME;
+  showPin(path);
   navigator.storage?.persist?.();
 
   if (await render(path)) {
