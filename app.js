@@ -51,12 +51,12 @@ async function api(path, token, opts = {}) {
     cache: opts.cache,
     headers: { Authorization: `Bearer ${token}`, Accept: opts.accept ?? 'application/vnd.github+json' },
   });
-  if (r.status === 401) throw new AuthError('Access expired. Ask Stefan for a new link.');
+  if (r.status === 401) throw new AuthError('Access expired. Tap to enter a new token.');
   if (!r.ok) throw new Error(`GitHub returned ${r.status}`);
   return r;
 }
 
-const wanted = path => path === HOME || (path.startsWith('trips/') && path.endsWith('.md'));
+const wanted = path => path.endsWith('.md') && !path.startsWith('.claude/');
 
 // Downloads only files whose sha changed and drops deleted ones. Returns the number of changes.
 async function sync(token, onProgress) {
@@ -182,7 +182,7 @@ marked.use({ gfm: true, renderer });
 
 function askForToken() {
   doc.innerHTML = `
-    <p>No access token on this device. Open the link you were sent, or paste the token here.</p>
+    <p>Paste your access token. Ask Stefan if you don't have one.</p>
     <form id="token-form"><input name="t" placeholder="github_pat_..." autocomplete="off"> <button>Save</button></form>`;
   doc.querySelector('#token-form').onsubmit = async e => {
     e.preventDefault();
@@ -235,7 +235,7 @@ async function backgroundSync(token) {
   try {
     if (await sync(token)) showBanner('Updated. Tap to reload.', () => location.reload());
   } catch (e) {
-    if (e instanceof AuthError) showBanner(e.message);
+    if (e instanceof AuthError) showBanner(e.message, () => { banner.hidden = true; askForToken(); });
   } finally {
     syncing = false;
     await showLastSync();
