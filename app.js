@@ -37,15 +37,22 @@ const allKeys = name => tx(name, 'readonly', s => s.getAllKeys());
 
 class AuthError extends Error {}
 
+// A chat app's built-in browser (WeChat, WhatsApp, Facebook...) keeps its own storage, apart from
+// the browser the app gets installed from.
+const IN_APP_BROWSER = /MicroMessenger|WhatsApp|FBAN|FBAV|Instagram|Line\/|; wv\)/.test(navigator.userAgent);
+
 // Accepts ?token= as well as #token=, since some chat apps drop the # part of a link.
 async function readToken() {
   const url = new URL(location.href);
   const token = url.searchParams.get('token') ?? new URLSearchParams(url.hash.slice(1)).get('token');
   if (token) {
     await put('kv', 'token', token.trim());
-    url.searchParams.delete('token');
-    url.hash = '';
-    history.replaceState(null, '', url);
+    // Inside a chat app, keep the token in the link so "Open in browser" carries it across.
+    if (!IN_APP_BROWSER) {
+      url.searchParams.delete('token');
+      url.hash = '';
+      history.replaceState(null, '', url);
+    }
   }
   return get('kv', 'token');
 }
@@ -259,6 +266,7 @@ async function showPin(path) {
 }
 
 async function main() {
+  if (IN_APP_BROWSER) showBanner('To install the app: tap ⋯ at the top right, then "Open in browser".');
   const token = await readToken();
   if (!token) return askForToken();
   // The home-screen icon launches with no ?p: open the chosen start page, else the last page read.
