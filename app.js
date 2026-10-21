@@ -37,11 +37,15 @@ const allKeys = name => tx(name, 'readonly', s => s.getAllKeys());
 
 class AuthError extends Error {}
 
+// Accepts ?token= as well as #token=, since some chat apps drop the # part of a link.
 async function readToken() {
-  const m = location.hash.match(/^#token=(github_pat_\w+)$/);
-  if (m) {
-    await put('kv', 'token', m[1]);
-    history.replaceState(null, '', location.pathname + location.search);
+  const url = new URL(location.href);
+  const token = url.searchParams.get('token') ?? new URLSearchParams(url.hash.slice(1)).get('token');
+  if (token) {
+    await put('kv', 'token', token.trim());
+    url.searchParams.delete('token');
+    url.hash = '';
+    history.replaceState(null, '', url);
   }
   return get('kv', 'token');
 }
@@ -51,7 +55,9 @@ async function api(path, token, opts = {}) {
     cache: opts.cache,
     headers: { Authorization: `Bearer ${token}`, Accept: opts.accept ?? 'application/vnd.github+json' },
   });
-  if (r.status === 401) throw new AuthError('Access expired. Tap to enter a new token.');
+  if (r.status === 401) throw new AuthError('Access expired.');
+  // GitHub answers 404, not 403, when a token can't see a private repo.
+  if (r.status === 404) throw new AuthError("This token can't read the trip repo.");
   if (!r.ok) throw new Error(`GitHub returned ${r.status}`);
   return r;
 }
@@ -180,9 +186,9 @@ function drawMaps(root) {
 }
 marked.use({ gfm: true, renderer });
 
-function askForToken() {
+function askForToken(problem = '') {
   doc.innerHTML = `
-    <p>Paste your access token. Ask Stefan if you don't have one.</p>
+    <p>${problem} Paste your access token. Ask Stefan if you don't have one.</p>
     <form id="token-form"><input name="t" placeholder="github_pat_..." autocomplete="off"> <button>Save</button></form>`;
   doc.querySelector('#token-form').onsubmit = async e => {
     e.preventDefault();
@@ -235,7 +241,7 @@ async function backgroundSync(token) {
   try {
     if (await sync(token)) showBanner('Updated. Tap to reload.', () => location.reload());
   } catch (e) {
-    if (e instanceof AuthError) showBanner(e.message, () => { banner.hidden = true; askForToken(); });
+    if (e instanceof AuthError) showBanner(`${e.message} Tap to enter a new token.`, () => { banner.hidden = true; askForToken(); });
   } finally {
     syncing = false;
     await showLastSync();
@@ -273,7 +279,8 @@ async function main() {
       if (!(await render(path))) doc.textContent = `${path} is not in the trip repo.`;
     } catch (e) {
       status.textContent = '';
-      doc.textContent = e instanceof AuthError ? e.message : `Could not download the trip docs: ${e.message}`;
+      if (e instanceof AuthError) askForToken(e.message);
+      else doc.textContent = `Could not download the trip docs: ${e.message}`;
     }
   }
 
