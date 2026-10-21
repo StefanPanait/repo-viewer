@@ -104,7 +104,7 @@ function rewriteLinks(root, path) {
     if (href.startsWith('#')) continue;
     const url = new URL(href, `https://repo/${path}`);
     const target = decodeURIComponent(url.pathname.slice(1));
-    a.href = target.endsWith('.md')
+    a.href = target.endsWith('.md') || target.endsWith('/')
       ? `?p=${encodeURIComponent(target)}${url.hash}`
       : `https://github.com/${REPO}/blob/main/${target}${url.hash}`;
   }
@@ -131,10 +131,22 @@ function askForToken() {
   };
 }
 
+// A folder shows its README.md like GitHub does, else a list of what it holds.
+async function load(path) {
+  if (!path.endsWith('/')) return (await get('files', path))?.text;
+  const readme = await get('files', `${path}README.md`);
+  if (readme) return readme.text;
+  const entries = new Set((await allKeys('files'))
+    .filter(p => p.startsWith(path))
+    .map(p => p.slice(path.length).replace(/\/.*/, '/')));
+  if (!entries.size) return undefined;
+  return `# ${path.split('/').at(-2)}\n\n${[...entries].sort().map(e => `- [${e.replace(/\.md$/, '')}](<${e}>)`).join('\n')}`;
+}
+
 async function render(path) {
-  const file = await get('files', path);
-  if (!file) return false;
-  doc.innerHTML = marked.parse(file.text);
+  const text = await load(path);
+  if (text === undefined) return false;
+  doc.innerHTML = marked.parse(text);
   addHeadingIds(doc);
   rewriteLinks(doc, path);
   document.title = doc.querySelector('h1')?.textContent ?? path;
