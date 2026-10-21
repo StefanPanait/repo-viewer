@@ -113,11 +113,71 @@ function rewriteLinks(root, path) {
 const renderer = {
   code({ text, lang }) {
     if (lang !== 'geojson') return false;
-    const pre = document.createElement('pre');
-    pre.textContent = text;
-    return `<details><summary>Map data</summary>${pre.outerHTML}</details>`;
+    return `<div class="map" data-geojson="${encodeURIComponent(text)}"></div>`;
   },
 };
+
+const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+// WGS-84 -> GCJ-02, ported from tools/geo.py. Amap only reads GCJ-02.
+function wgs2gcj(lon, lat) {
+  if (!(lon > 73.66 && lon < 135.05 && lat > 3.86 && lat < 53.55)) return [lon, lat];
+  const A = 6378245.0, EE = 0.00669342162296594323, PI = Math.PI;
+  const x = lon - 105, y = lat - 35;
+  let dlat = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  dlat += (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3;
+  dlat += (20 * Math.sin(y * PI) + 40 * Math.sin(y / 3 * PI)) * 2 / 3;
+  dlat += (160 * Math.sin(y / 12 * PI) + 320 * Math.sin(y * PI / 30)) * 2 / 3;
+  let dlon = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  dlon += (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3;
+  dlon += (20 * Math.sin(x * PI) + 40 * Math.sin(x / 3 * PI)) * 2 / 3;
+  dlon += (150 * Math.sin(x / 12 * PI) + 300 * Math.sin(x / 30 * PI)) * 2 / 3;
+  const rad = lat * PI / 180, m = 1 - EE * Math.sin(rad) ** 2, sm = Math.sqrt(m);
+  return [lon + dlon * 180 / (A / sm * Math.cos(rad) * PI), lat + dlat * 180 / (A * (1 - EE) / (m * sm) * PI)];
+}
+
+function amapUrl([lon, lat], name) {
+  const [glon, glat] = wgs2gcj(lon, lat);
+  const position = `${glon.toFixed(6)},${glat.toFixed(6)}`;
+  return `https://uri.amap.com/marker?position=${position}&name=${encodeURIComponent(name)}&coordinate=gaode&callnative=1`;
+}
+
+function popup(f) {
+  const { name = '', ...rest } = f.properties ?? {};
+  const rows = Object.values(rest).map(v => `<div>${esc(v)}</div>`).join('');
+  const amap = f.geometry.type === 'Point'
+    ? `<a href="${esc(amapUrl(f.geometry.coordinates, name))}" target="_blank" rel="noopener">Open in Amap</a>` : '';
+  return `<b>${esc(name)}</b>${rows}${amap}`;
+}
+
+// Numbered like tools/geo.py's geojson.io styling: a name starting "3." gets a 3 on its pin.
+const pinIcon = name => L.divIcon({
+  className: 'pin', iconSize: [24, 24], popupAnchor: [0, -10],
+  html: esc(String(name ?? '').match(/^(\d+)\./)?.[1] ?? ''),
+});
+
+// One-finger drags scroll the page until the map is tapped, so a map can't trap the scroll.
+function drawMaps(root) {
+  if (!window.L) return; // a stale cached index.html without Leaflet, during a shell update
+  for (const el of root.querySelectorAll('.map')) {
+    let data;
+    try { data = JSON.parse(decodeURIComponent(el.dataset.geojson)); } catch { continue; }
+    const map = L.map(el, { dragging: false, scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap',
+    }).addTo(map);
+    const layer = L.geoJSON(data, {
+      pointToLayer: (f, latlng) => L.marker(latlng, { icon: pinIcon(f.properties?.name) }),
+      style: { color: '#d9534f', weight: 3 },
+      onEachFeature: (f, l) => l.bindPopup(popup(f)),
+    }).addTo(map);
+    map.fitBounds(layer.getBounds(), { padding: [24, 24], maxZoom: 15 });
+    map.on('click', () => { map.dragging.enable(); el.classList.add('active'); });
+    document.addEventListener('click', e => {
+      if (!el.contains(e.target)) { map.dragging.disable(); el.classList.remove('active'); }
+    });
+  }
+}
 marked.use({ gfm: true, renderer });
 
 function askForToken() {
@@ -149,6 +209,7 @@ async function render(path) {
   doc.innerHTML = marked.parse(text);
   addHeadingIds(doc);
   rewriteLinks(doc, path);
+  drawMaps(doc);
   document.title = doc.querySelector('h1')?.textContent ?? path;
   put('kv', 'lastPage', path);
   if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();

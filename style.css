@@ -61,7 +61,21 @@ code, pre { background: var(--code-bg); border-radius: 6px; font-size: 85%; }
 code { padding: .2em .4em; }
 pre { padding: 12px; overflow-x: auto; }
 pre code { padding: 0; background: none; }
-details summary { color: var(--muted); cursor: pointer; }
+
+.map { height: 320px; margin: 16px 0; border: 1px solid var(--border); border-radius: 6px; }
+.map.active { outline: 2px solid var(--link); }
+.pin {
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #4a90d9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  color: #fff;
+  font: 600 12px/20px sans-serif;
+  text-align: center;
+}
+.leaflet-popup-content { color: #1f2328; }
+.leaflet-popup-content div { margin-top: 4px; }
+.leaflet-popup-content a { display: inline-block; margin-top: 6px; }
 img { max-width: 100%; }
 #token-form input { font: inherit; padding: 6px; width: 60%; }
 li:has(> input[type=checkbox]) { list-style: none; }
